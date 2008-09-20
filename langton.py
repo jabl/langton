@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-#  Copyright (c) 2003-2004 Janne Blomqvist
+#  Copyright (c) 2003-2004, 2008 Janne Blomqvist
 
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -16,12 +16,15 @@
 #  along with this program; if not, write to the Free Software
 #  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
-__version__ = "$Revision: 1.6 $"
+__version__ = "Revision: 2.0 "
 
 
-import random,Numeric, RandomArray,sys
-from wxPython.wx import *
-from doubleBuffer import *
+import random
+import numpy as npy 
+import numpy.random as nrand
+import sys
+import wx
+from bufferedwindow import *
 
 NORTH=0
 EAST=1
@@ -33,46 +36,47 @@ RIGHT=1
 BACK=3
 LEFT=4
 
-ID_ABOUT=101
-ID_EXIT=102
-ID_START=103
-ID_STOP=104
-ID_DEBUG=105
-ID_SETUP=106
-ID_SETUP_OK=107
-ID_SAVEFILE=108
-
 class Grid:
     "Grid for the ants to move on"
     
-    def __init__(self,n,colours):
+    def __init__(self,n,colors):
         "Init the nxn index grid "
-        self.grid = Numeric.zeros((n,n), Numeric.Int8)
+        self.grid = npy.zeros((n,n), dtype=npy.int8)
         # Init nxnx3 RGB grid
-        self.cgrid = Numeric.zeros((n,n,3),Numeric.UnsignedInt8)
-        self.n = n
-        self.colours = colours
-        self.cgrid[:,:]= self.colours[0]
+        self.cgrid = npy.zeros((n,n,3),npy.uint8)
+        self.colors = colors
+        self.cgrid[:,:]= self.colors[0]
 
         # Index vector for periodic boundary conditions
-        self.__foo = list(range(n))
-        self.__foo.append(n-1)
-        self.__foo.insert(0,0)
-        self.index = Numeric.array(self.__foo)
+        __foo = list(range(n))
+        __foo.append(n-1)
+        __foo.insert(0,0)
+        self.index = npy.array(__foo)
+
+    def _get_n(self):
+        return self.grid.shape[0]
+
+    def _set_n(self, val):
+        raise AttributeError, "Can't set attribute n."
+
+    def _del_n(self):
+        raise AttributeError, "Can't delete attribute n."
+
+    n = property(_get_n, _set_n, _del_n, "Grid size.")
 
     def getColor(self,pos_x, pos_y):
         "return color value of a grid point"
         return self.grid[pos_x,pos_y]
 
-    def setColor(self,pos_x,pos_y, colour):
+    def setColor(self,pos_x,pos_y, color):
         "set the color value of a grid point"
-        self.grid[pos_x,pos_y] = colour
-        self.cgrid[pos_x,pos_y,:] = self.colours[colour]
+        self.grid[pos_x,pos_y] = color
+        self.cgrid[pos_x,pos_y,:] = self.colors[color]
 
     def printGrid(self, event=None):
         "print the grid"
         print self.grid
-        #print "Now comes the colour values:\n"
+        #print "Now comes the color values:\n"
         #print self.cgrid
     
 
@@ -86,26 +90,22 @@ class Ant:
         self.pos_x = random.randrange(0,self.grid.n)
         self.pos_y = random.randrange(0,self.grid.n)
         self.heading = random.randrange(0,4) # north, east etc.
-        self.color = RandomArray.permutation(config["numColors"])
-        self.dir = RandomArray.randint(0,4,config["numColors"])
+        self.color = nrand.permutation(config["numColors"])
+        self.dir = nrand.randint(0,4,config["numColors"])
 
 
     def run(self):
         "Run the ant for one timestep"
         # Which color is the current grid cell?
-        self.currentcolor = self.grid.getColor(self.pos_x,self.pos_y)
+        currentcolor = self.grid.getColor(self.pos_x,self.pos_y)
         # Now, change the color of the grid cell according to program
-        self.grid.setColor(self.pos_x,self.pos_y,self.color[self.currentcolor])
+        self.grid.setColor(self.pos_x,self.pos_y,self.color[currentcolor])
         # And move ant in the direction specified in its program
-        self.move()
-        
-    def move(self):
-        "Move ant"
         # First decide which direction to turn to
-
-        self.heading = (self.heading + self.dir[self.currentcolor]) % 3
+        
+        self.heading = (self.heading + self.dir[currentcolor]) % 3
         #self.heading = self.heading % 3
-
+        
         if (self.heading == NORTH):
             self.pos_y += 1
         elif (self.heading == EAST):
@@ -125,182 +125,198 @@ class Ant:
 
 
 # Now the gui stuff
-class LangtonCanvas(wxBufferedWindow):
+class LangtonCanvas(BufferedWindow):
     """The canvas where the ants move around"""
-    def __init__(self, parent, ID, width=300, height=300, config=None):
+    def __init__(self, parent, ID, config=None):
 
-#        self.bitmap.SetUserScale(width/GRIDSIZE, height/GRIDSIZE)
+        #self.bitmap.SetUserScale(width/GRIDSIZE, height/GRIDSIZE)
         self.parent = parent
-        self.Width=width
-        self.Height=height
-        self.config = config
 
-        # Set up colours (random)
-        self.colours = Numeric.zeros((config["numColors"], 3), Numeric.UnsignedInt8)
-        for i in range(0,3):
-            self.colours[:,i] = (RandomArray.randint(0,255,config["numColors"])).astype(Numeric.UnsignedInt8)
+        self.working = False
+        self.set_config(config)
+
+        BufferedWindow.__init__(self, parent, ID)
+        #self.SetClientSize(wx.Size(width, height))
+
+    def set_config(self, config):
+        """Update the config."""
+        restartwork = False
+        if self.working:
+            self.working = False
+            restartwork = True
+        self.config = config
+        # Set up colors (random)
+        self.colors = nrand.randint(0, 256, config["numColors"] * 3) \
+                .astype(npy.uint8).reshape(config["numColors"], 3)
 
         # Init the Grid
-        self.grid = Grid(config["gridSize"], self.colours)
+        self.grid = Grid(config["gridSize"], self.colors)
 
         # Init ants
         self.ant = []
         for nant in xrange(config["numAnts"]):
             self.ant.append(Ant(self.grid, config))
 
-        self.working = 0
-        wxBufferedWindow.__init__(self, parent, ID)
-        self.SetSize(wxSize(width, height))
+        if restartwork:
+            self.working = True
+
 
     def OnStart(self, event):
         if not self.working:
-            self.working = 1
+            self.working = True
             self.parent.SetStatusText("Simulation running!")
             while 1:
-                wxYield()
+                wx.Yield()
                 if not self.working:
                     break
-                for oneant in self.ant:
-                    oneant.run()
-                self.UpdateDrawing()
+                for ii in xrange(10):
+                    for oneant in self.ant:
+                        oneant.run()
+                    self.UpdateDrawing()
 
     def OnStop(self, event):
         if self.working:
-            self.working = 0
+            self.working = False
             self.parent.SetStatusText("Simulation stopped!")
 
     def Draw(self,dc):
-        dc.BeginDrawing()
+        #dc.BeginDrawing()
+        dc.Clear()
         array = self.grid.cgrid
-        self.image = wxEmptyImage(self.config["gridSize"],self.config["gridSize"])
-        self.image.SetData(array.tostring())
-        self.image.Rescale(self.Width,self.Height)
-        self.bitmap = self.image.ConvertToBitmap()
-        dc.DrawBitmap(self.bitmap,0,0,false)
-        dc.EndDrawing()
+        image = wx.EmptyImage(self.config["gridSize"],self.config["gridSize"])
+        image.SetData(array.tostring())
+        w, h = self.GetClientSizeTuple()
+        image.Rescale(w,h)
+        bitmap = image.ConvertToBitmap()
+        dc.DrawBitmap(bitmap,0,0,False)
+        #dc.EndDrawing()
 
 
-class SetupDialog(wxDialog):
+class SetupDialog(wx.Dialog):
     """Dialog for the user to configure the simulation"""
     def __init__(self, parent, config):
-        wxDialog.__init__(self, parent, -1, "Setup", wxDefaultPosition, wxSize(100,150), wxDIALOG_MODAL, "LangtonSetupDialog")
-        self.config = config
+        wx.Dialog.__init__(self, parent, -1, "Setup", wx.DefaultPosition, wx.Size(100,150), wx.DIALOG_MODAL, "LangtonSetupDialog")
         self.parent = parent
-        self.numColText = wxStaticText(self, -1, "Number of colors: ", wxPoint(10,10), wxDefaultSize, wxALIGN_LEFT)
-        self.numColControl = wxTextCtrl(self, -1, str(config["numColors"]), wxPoint(150,10), wxDefaultSize)
-        self.numAntsText = wxStaticText(self, -1, "Number of ants: ", wxPoint(10,50), wxDefaultSize, wxALIGN_LEFT)
-        self.numAntsControl = wxTextCtrl(self, -1, str(config["numAnts"]), wxPoint(150,50), wxDefaultSize)
-        self.gridSizeText = wxStaticText(self, -1, "Gridsize: ", wxPoint(10,90), wxDefaultSize, wxALIGN_LEFT)
-        self.gridSizeControl = wxTextCtrl(self, -1, str(config["gridSize"]), wxPoint(150,90), wxDefaultSize)
-        self.okButton = wxButton(self, ID_SETUP_OK, "Ok", wxPoint(50,130), wxDefaultSize)
-        EVT_BUTTON(self, ID_SETUP_OK, self.OnOk)
-        self.cancelButton = wxButton(self, wxID_CANCEL, "Cancel", wxPoint(140, 130), wxDefaultSize)
-        self.SetAutoLayout(true)
-        self.Centre(wxBOTH)
+        self.numColText = wx.StaticText(self, -1, "Number of colors: ", wx.Point(10,10), wx.DefaultSize, wx.ALIGN_LEFT)
+        self.numColControl = wx.TextCtrl(self, -1, str(config["numColors"]), wx.Point(150,10), wx.DefaultSize)
+        self.numAntsText = wx.StaticText(self, -1, "Number of ants: ", wx.Point(10,50), wx.DefaultSize, wx.ALIGN_LEFT)
+        self.numAntsControl = wx.TextCtrl(self, -1, str(config["numAnts"]), wx.Point(150,50), wx.DefaultSize)
+        self.gridSizeText = wx.StaticText(self, -1, "Gridsize: ", wx.Point(10,90), wx.DefaultSize, wx.ALIGN_LEFT)
+        self.gridSizeControl = wx.TextCtrl(self, -1, str(config["gridSize"]), wx.Point(150,90), wx.DefaultSize)
+        ID_SETUP_OK = wx.NewId()
+        self.okButton = wx.Button(self, ID_SETUP_OK, "Ok", wx.Point(50,130), wx.DefaultSize)
+        wx.EVT_BUTTON(self, ID_SETUP_OK, self.OnOk)
+        self.cancelButton = wx.Button(self, wx.ID_CANCEL, "Cancel", wx.Point(140, 130), wx.DefaultSize)
+        self.SetAutoLayout(True)
+        self.Centre(wx.BOTH)
         self.Layout()
         self.Fit()
         #sz = self.GetClientSize()
-        #self.SetClientSize(wxSize(100, 150))
-        self.Show(true)
+        #self.SetClientSize(wx.Size(100, 150))
+        self.Show(True)
 
     def OnOk(self, event):
         """User pressed ok button, destroy the dialog and reset simulation"""
         # read values from the text controls and set config dict
-        self.config["numColors"] = int(self.numColControl.GetValue())
-        self.config["numAnts"] = int(self.numAntsControl.GetValue())
-        self.config["gridSize"] = int(self.gridSizeControl.GetValue())
+        config = {}
+        config["numColors"] = int(self.numColControl.GetValue())
+        config["numAnts"] = int(self.numAntsControl.GetValue())
+        config["gridSize"] = int(self.gridSizeControl.GetValue())
         # Cannot simply create new canvas, because events are bound to the old one!
         # So instead of creating a new canvas, call the constructor again!
-        self.parent.canvas.__init__(self.parent, -1, config = self.config)
-        self.EndModal(wxID_OK)
+        #self.parent.canvas.__init__(self.parent, -1, config = self.config)
+        self.parent.canvas.set_config(config)
+        self.EndModal(wx.ID_OK)
 
 
-class Frame(wxFrame):
+class Frame(wx.Frame):
     def __init__(self, parent,ID, title):
-        wxFrame.__init__(self,parent,ID,title,wxDefaultPosition,wxSize(300,300))
+        wx.Frame.__init__(self,parent,ID,title,wx.DefaultPosition,size = (300,350))
         self.CreateStatusBar()
         self.SetStatusText("Langtons ant")
 
-        filemenu = wxMenu()
+        filemenu = wx.Menu()
+        ID_SAVEFILE = wx.NewId()
         filemenu.Append(ID_SAVEFILE, "&Save", "Save to file")
+        ID_EXIT = wx.NewId()
         filemenu.Append(ID_EXIT, "E&xit", "Terminate program")
 
-        editmenu = wxMenu()
+        editmenu = wx.Menu()
+        ID_SETUP = wx.NewId()
         editmenu.Append(ID_SETUP, "&Setup", "Configure the simulation") 
 
-        simumenu = wxMenu()
+        simumenu = wx.Menu()
+        ID_START = wx.NewId()
         simumenu.Append(ID_START, "S&tart", "Start the simulation")
+        ID_STOP = wx.NewId()
         simumenu.Append(ID_STOP, "Sto&p", "Stop the simulation")
+        ID_DEBUG = wx.NewId()
         simumenu.Append(ID_DEBUG, "&Debug", "Print debug information")
 
-        helpmenu = wxMenu()
+        helpmenu = wx.Menu()
+        ID_ABOUT = wx.NewId()
         helpmenu.Append(ID_ABOUT, "&About",
                     "More info about program")
 
 #        menu.AppendSeparator()
 
-        menuBar = wxMenuBar()
+        menuBar = wx.MenuBar()
         menuBar.Append(filemenu, "&File")
         menuBar.Append(editmenu, "&Edit")
         menuBar.Append(simumenu, "&Simulation")
         menuBar.Append(helpmenu, "&Help")
         self.SetMenuBar(menuBar)
 
-        self.Centre(wxBOTH)
+        self.Centre(wx.BOTH)
 
         # Set some default values for the configuration
-        self.config = {"numColors": 2, "numAnts": 10, "gridSize": 100}
-        self.canvas = LangtonCanvas(self, -1, config=self.config)
+        config = {"numColors": 2, "numAnts": 10, "gridSize": 100}
+        self.canvas = LangtonCanvas(self, -1, config=config)
 
-        self.SetAutoLayout(true)
-        self.Layout()
-        self.Fit()
-        sz = self.GetClientSize()
-        self.SetClientSize(wxSize(sz.width-7, sz.height-14))
-
-        EVT_MENU(self, ID_ABOUT, self.OnAbout)
-        EVT_MENU(self, ID_EXIT, self.OnExit)
-        EVT_MENU(self, ID_START, self.canvas.OnStart)
-        EVT_MENU(self, ID_STOP, self.canvas.OnStop)
-        EVT_MENU(self, ID_DEBUG, self.printConfig)
-        EVT_MENU(self, ID_SETUP, self.OnSetup)
-        EVT_MENU(self, ID_SAVEFILE, self.saveToFile)
+        wx.EVT_MENU(self, ID_ABOUT, self.OnAbout)
+        wx.EVT_MENU(self, ID_EXIT, self.OnExit)
+        wx.EVT_MENU(self, ID_START, self.canvas.OnStart)
+        wx.EVT_MENU(self, ID_STOP, self.canvas.OnStop)
+        wx.EVT_MENU(self, ID_DEBUG, self.printConfig)
+        wx.EVT_MENU(self, ID_SETUP, self.OnSetup)
+        wx.EVT_MENU(self, ID_SAVEFILE, self.saveToFile)
 
     def printConfig(self, event):
         """Print config information"""
-        print self.config
+        print self.canvas.config
 
     def saveToFile(self, event):
         """ Save the generated picture to a file. """
-        dlg = wxFileDialog(self, "Choose a file name to save the image as a PNG to",
-                           defaultDir = "", defaultFile = "", wildcard = "*.png", style=wxSAVE)
-        if dlg.ShowModal() == wxID_OK:
-            self.canvas.SaveToFile(dlg.GetPath(), wxBITMAP_TYPE_PNG)
+        dlg = wx.FileDialog(self, "Choose a file name to save the image as a PNG to",
+                           defaultDir = "", defaultFile = "", wildcard = "*.png", style=wx.SAVE)
+        if dlg.ShowModal() == wx.ID_OK:
+            self.canvas.SaveToFile(dlg.GetPath(), wx.BITMAP_TYPE_PNG)
         dlg.Destroy()
         
     def OnSetup(self, event):
         """Launch the setup dialog"""
-        dlg = SetupDialog(self, self.config)
+        dlg = SetupDialog(self, self.canvas.config)
         dlg.ShowModal()
         dlg.Destroy()
         
 
     def OnAbout(self, event):
         message = "This is Langtons ant.\nVersion: " + __version__[10:-1]
-        dlg = wxMessageDialog(self, message , "About Me", wxOK | wxICON_INFORMATION)
+        dlg = wx.MessageDialog(self, message , "About Me", wx.OK | wx.ICON_INFORMATION)
         dlg.ShowModal()
         dlg.Destroy()
 
     def OnExit(self, event):
-        self.Close(true)
+        self.canvas.working = False
+        self.Close(True)
 
-class Langton(wxApp):
+class Langton(wx.App):
     def OnInit(self):
-        wxInitAllImageHandlers() # So we can save PNG image
-        frame = Frame(NULL, -1, "Langtons ant")
-        frame.Show(true)
+        wx.InitAllImageHandlers() # So we can save PNG image
+        frame = Frame(None, -1, "Langtons ant")
+        frame.Show(True)
         self.SetTopWindow(frame)
-        return true
+        return True
 
 app = Langton(0)
 app.MainLoop()
