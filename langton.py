@@ -261,7 +261,7 @@ class Frame(wx.Frame):
                     "More info about program")
         self.Bind(wx.EVT_MENU, self.OnAbout, item)
 
-#        menu.AppendSeparator()
+        #menu.AppendSeparator()
 
         menuBar = wx.MenuBar()
         menuBar.Append(filemenu, "&File")
