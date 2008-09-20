@@ -30,7 +30,7 @@ EAST=1
 SOUTH=2
 WEST=3
 
-class Grid:
+class Grid(object):
     "Grid for the ants to move on"
     
     def __init__(self,n,colors):
@@ -74,7 +74,7 @@ class Grid:
         #print self.cgrid
     
 
-class Ant:
+class Ant(object):
     "Represents an ant that moves around on the grid"
 
     def __init__(self, grid, config):
