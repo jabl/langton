@@ -203,10 +203,9 @@ class SetupDialog(wx.Dialog):
         self.numAntsControl = wx.TextCtrl(self, -1, str(config["numAnts"]), wx.Point(150,50), wx.DefaultSize)
         self.gridSizeText = wx.StaticText(self, -1, "Gridsize: ", wx.Point(10,90), wx.DefaultSize, wx.ALIGN_LEFT)
         self.gridSizeControl = wx.TextCtrl(self, -1, str(config["gridSize"]), wx.Point(150,90), wx.DefaultSize)
-        ID_SETUP_OK = wx.NewId()
-        self.okButton = wx.Button(self, ID_SETUP_OK, "Ok", wx.Point(50,130), wx.DefaultSize)
-        wx.EVT_BUTTON(self, ID_SETUP_OK, self.OnOk)
-        self.cancelButton = wx.Button(self, wx.ID_CANCEL, "Cancel", wx.Point(140, 130), wx.DefaultSize)
+        okButton = wx.Button(self, wx.ID_OK, "Ok", wx.Point(50,130), wx.DefaultSize)
+        self.Bind(wx.EVT_BUTTON, self.OnOk, okButton)
+        cancelButton = wx.Button(self, wx.ID_CANCEL, "Cancel", wx.Point(140, 130), wx.DefaultSize)
         self.SetAutoLayout(True)
         self.Centre(wx.BOTH)
         self.Layout()
@@ -235,28 +234,32 @@ class Frame(wx.Frame):
         self.CreateStatusBar()
         self.SetStatusText("Langtons ant")
 
+        # Set some default values for the configuration
+        config = {"numColors": 2, "numAnts": 10, "gridSize": 100}
+        self.canvas = LangtonCanvas(self, -1, config=config)
+
         filemenu = wx.Menu()
-        ID_SAVEFILE = wx.NewId()
-        filemenu.Append(ID_SAVEFILE, "&Save", "Save to file")
-        ID_EXIT = wx.NewId()
-        filemenu.Append(ID_EXIT, "E&xit", "Terminate program")
+        item = filemenu.Append(wx.ID_SAVE, "&Save", "Save to file")
+        self.Bind(wx.EVT_MENU, self.saveToFile, item)
+        item = filemenu.Append(wx.ID_EXIT, "E&xit", "Terminate program")
+        self.Bind(wx.EVT_MENU, self.OnExit, item)
 
         editmenu = wx.Menu()
-        ID_SETUP = wx.NewId()
-        editmenu.Append(ID_SETUP, "&Setup", "Configure the simulation") 
+        item = editmenu.Append(wx.ID_SETUP, "&Setup", "Configure the simulation") 
+        self.Bind(wx.EVT_MENU, self.OnSetup, item)
 
         simumenu = wx.Menu()
-        ID_START = wx.NewId()
-        simumenu.Append(ID_START, "S&tart", "Start the simulation")
-        ID_STOP = wx.NewId()
-        simumenu.Append(ID_STOP, "Sto&p", "Stop the simulation")
-        ID_DEBUG = wx.NewId()
-        simumenu.Append(ID_DEBUG, "&Debug", "Print debug information")
+        item = simumenu.Append(-1, "S&tart", "Start the simulation")
+        self.Bind(wx.EVT_MENU, self.canvas.OnStart, item)
+        item = simumenu.Append(wx.ID_STOP, "Sto&p", "Stop the simulation")
+        self.Bind(wx.EVT_MENU, self.canvas.OnStop, item)
+        item = simumenu.Append(-1, "&Debug", "Print debug information")
+        self.Bind(wx.EVT_MENU, self.printConfig, item)
 
         helpmenu = wx.Menu()
-        ID_ABOUT = wx.NewId()
-        helpmenu.Append(ID_ABOUT, "&About",
+        item = helpmenu.Append(wx.ID_ABOUT, "&About",
                     "More info about program")
+        self.Bind(wx.EVT_MENU, self.OnAbout, item)
 
 #        menu.AppendSeparator()
 
@@ -269,17 +272,6 @@ class Frame(wx.Frame):
 
         self.Centre(wx.BOTH)
 
-        # Set some default values for the configuration
-        config = {"numColors": 2, "numAnts": 10, "gridSize": 100}
-        self.canvas = LangtonCanvas(self, -1, config=config)
-
-        wx.EVT_MENU(self, ID_ABOUT, self.OnAbout)
-        wx.EVT_MENU(self, ID_EXIT, self.OnExit)
-        wx.EVT_MENU(self, ID_START, self.canvas.OnStart)
-        wx.EVT_MENU(self, ID_STOP, self.canvas.OnStop)
-        wx.EVT_MENU(self, ID_DEBUG, self.printConfig)
-        wx.EVT_MENU(self, ID_SETUP, self.OnSetup)
-        wx.EVT_MENU(self, ID_SAVEFILE, self.saveToFile)
 
     def printConfig(self, event):
         """Print config information"""
