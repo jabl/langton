@@ -22,7 +22,7 @@ import random
 import numpy as np 
 import numpy.random as nrand
 import sys
-from PyQt4 import QtGui, QtCore
+from PyQt4 import QtGui, QtCore, QtOpenGL
 from qtlangton import Ui_Langton
 
 NORTH=0
@@ -38,10 +38,10 @@ class Grid(object):
         self.grid = np.zeros((n,n), dtype=np.uint8)
 
         # Index vector for periodic boundary conditions
-        __foo = list(range(n))
-        __foo.append(n-1)
-        __foo.insert(0,0)
-        self.index = np.array(__foo)
+        #__foo = list(range(n))
+        #__foo.append(n-1)
+        #__foo.insert(0,0)
+        #self.index = np.array(__foo)
 
     def _get_n(self):
         return self.grid.shape[0]
@@ -53,14 +53,6 @@ class Grid(object):
         raise AttributeError, "Can't delete attribute n."
 
     n = property(_get_n, _set_n, _del_n, "Grid size.")
-
-    def getColor(self,pos_x, pos_y):
-        "return color value of a grid point"
-        return self.grid[pos_x,pos_y]
-
-    def setColor(self,pos_x,pos_y, color):
-        "set the color value of a grid point"
-        self.grid[pos_x,pos_y] = color
 
     def printGrid(self, event=None):
         "print the grid"
@@ -86,9 +78,9 @@ class Ant(object):
     def run(self):
         "Run the ant for one timestep"
         # Which color is the current grid cell?
-        currentcolor = self.grid.getColor(self.pos_x,self.pos_y)
+        currentcolor = self.grid.grid[self.pos_x, self.pos_y]
         # Now, change the color of the grid cell according to program
-        self.grid.setColor(self.pos_x,self.pos_y,self.color[currentcolor])
+        self.grid.grid[self.pos_x, self.pos_y] = self.color[currentcolor]
         # And move ant in the direction specified in its program
         # First decide which direction to turn to
         
@@ -116,18 +108,16 @@ class Ant(object):
 # Now the gui stuff
 class LangtonCanvas(object):
     """The canvas where the ants move around"""
-    def __init__(self, parent, config=None):
+    def __init__(self, parent, config=None, gl=False):
 
-        #self.bitmap.SetUserScale(width/GRIDSIZE, height/GRIDSIZE)
         self.parent = parent
         self.view = parent.ui.canvas # QGraphicsView
 
         self.working = False
         if not config:
-            config = {"numColors": 2, "numAnts": 10, "gridSize": 300}
+            config = {"numColors": 2, "numAnts": 10, "gridSize": 300, 
+                      "gl": gl}
         self.set_config(config)
-
-        #self.SetClientSize(wx.Size(width, height))
 
     def set_config(self, config):
         """Update the config."""
@@ -149,6 +139,8 @@ class LangtonCanvas(object):
             self.ants.append(Ant(self.grid, config))
 
         # Init display
+        if self.config['gl']:
+            self.view.setViewport(QtOpenGL.QGLWidget())
         self.scene = QtGui.QGraphicsScene()
         self.scene.addPixmap(self.numpy2pixmap())
         self.view.setScene(self.scene)
@@ -170,19 +162,15 @@ class LangtonCanvas(object):
         if not self.working:
             self.working = True
             self.parent.ui.statusbar.showMessage("Simulation running!")
-            #while 1:
-            for jj in xrange(100):
+            while 1:
+                QtGui.QApplication.processEvents()
                 if not self.working:
                     break
                 for ii in xrange(10):
                     for oneant in self.ants:
                         oneant.run()
                     self.view.items()[0].setPixmap(self.numpy2pixmap())
-                    #self.scene.update()
-                    #self.view.show()
-                    self.view.repaint()
-                    #self.parent.ui.label.repaint()
-            self.stop()
+                    self.view.items()[0].update()
 
     def stop(self):
         if self.working:
@@ -191,18 +179,20 @@ class LangtonCanvas(object):
 
 
 class Langton(QtGui.QMainWindow):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, gl=False):
         QtGui.QWidget.__init__(self, parent)
         self.ui = Ui_Langton()
         self.ui.setupUi(self)
-        self.canvas = LangtonCanvas(self)
+        self.canvas = LangtonCanvas(self, gl=gl)
         self.resize(self.ui.canvas.size().width(), self.ui.canvas.size().height())
         self.connect(self.ui.actionQuit, QtCore.SIGNAL("triggered()"), 
-                               QtCore.SLOT("close()"))
+                               self.quit_app)
         self.connect(self.ui.actionSave, QtCore.SIGNAL("triggered()"),
                      self.show_save_dialog)
         self.connect(self.ui.actionAbout, QtCore.SIGNAL("triggered()"),
                      self.show_about_dialog)
+        self.connect(self.ui.actionAbout_Qt, QtCore.SIGNAL("triggered()"),
+                     QtGui.QApplication.aboutQt)
         self.connect(self.ui.actionStart, QtCore.SIGNAL("triggered()"),
                      self.canvas.start)
         self.connect(self.ui.actionStop, QtCore.SIGNAL("triggered()"),
@@ -210,6 +200,7 @@ class Langton(QtGui.QMainWindow):
 
     def show_save_dialog(self):
         filename = QtGui.QFileDialog.getSaveFileName(self, 'Save file')
+        self.canvas.numpy2pixmap().save(filename)
         #file=open(filename)
         #data = file.read()
 
@@ -220,9 +211,17 @@ class Langton(QtGui.QMainWindow):
         dlg.exec_()
         response = dlg.clickedButton()
 
+    def quit_app(self):
+        self.canvas.working = False
+        sys.exit()
 
 if __name__ == '__main__':
+    from optparse import OptionParser
     app = QtGui.QApplication(sys.argv)
-    my_app = Langton()
+    parser = OptionParser()
+    parser.add_option('-g', '--gl', dest='gl', action='store_true', 
+                      help='Use OpenGL')
+    (options, args) = parser.parse_args()
+    my_app = Langton(gl=options.gl)
     my_app.show()
     sys.exit(app.exec_())
