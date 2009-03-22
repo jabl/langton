@@ -15,15 +15,15 @@
 #  You should have received a copy of the GNU General Public License
 #  along with Langton.  If not, see <http://www.gnu.org/licenses/>.
 
-__version__ = "Revision: 2.0 "
+__version__ = "Revision: 3.0 "
 
 
 import random
-import numpy as npy 
+import numpy as np 
 import numpy.random as nrand
 import sys
-import wx
-from bufferedwindow import *
+from PyQt4 import QtGui, QtCore
+from qtlangton import Ui_Langton
 
 NORTH=0
 EAST=1
@@ -33,19 +33,15 @@ WEST=3
 class Grid(object):
     "Grid for the ants to move on"
     
-    def __init__(self,n,colors):
+    def __init__(self, n):
         "Init the nxn index grid "
-        self.grid = npy.zeros((n,n), dtype=npy.int8)
-        # Init nxnx3 RGB grid
-        self.cgrid = npy.zeros((n,n,3),npy.uint8)
-        self.colors = colors
-        self.cgrid[:,:]= self.colors[0]
+        self.grid = np.zeros((n,n), dtype=np.uint8)
 
         # Index vector for periodic boundary conditions
         __foo = list(range(n))
         __foo.append(n-1)
         __foo.insert(0,0)
-        self.index = npy.array(__foo)
+        self.index = np.array(__foo)
 
     def _get_n(self):
         return self.grid.shape[0]
@@ -65,7 +61,6 @@ class Grid(object):
     def setColor(self,pos_x,pos_y, color):
         "set the color value of a grid point"
         self.grid[pos_x,pos_y] = color
-        self.cgrid[pos_x,pos_y,:] = self.colors[color]
 
     def printGrid(self, event=None):
         "print the grid"
@@ -119,17 +114,19 @@ class Ant(object):
 
 
 # Now the gui stuff
-class LangtonCanvas(BufferedWindow):
+class LangtonCanvas(object):
     """The canvas where the ants move around"""
-    def __init__(self, parent, ID, config=None):
+    def __init__(self, parent, config=None):
 
         #self.bitmap.SetUserScale(width/GRIDSIZE, height/GRIDSIZE)
         self.parent = parent
+        self.view = parent.ui.canvas # QGraphicsView
 
         self.working = False
+        if not config:
+            config = {"numColors": 2, "numAnts": 10, "gridSize": 300}
         self.set_config(config)
 
-        BufferedWindow.__init__(self, parent, ID)
         #self.SetClientSize(wx.Size(width, height))
 
     def set_config(self, config):
@@ -141,168 +138,91 @@ class LangtonCanvas(BufferedWindow):
         self.config = config
         # Set up colors (random)
         self.colors = nrand.randint(0, 256, config["numColors"] * 3) \
-                .astype(npy.uint8).reshape(config["numColors"], 3)
+                .astype(np.uint8).reshape(config["numColors"], 3)
 
         # Init the Grid
-        self.grid = Grid(config["gridSize"], self.colors)
+        self.grid = Grid(config["gridSize"])
 
         # Init ants
-        self.ant = []
+        self.ants = []
         for nant in xrange(config["numAnts"]):
-            self.ant.append(Ant(self.grid, config))
+            self.ants.append(Ant(self.grid, config))
+
+        # Init display
+        self.scene = QtGui.QGraphicsScene()
+        self.scene.addPixmap(self.numpy2pixmap())
+        self.view.setScene(self.scene)
+        self.view.adjustSize()
+        self.view.show()
 
         if restartwork:
             self.working = True
 
+    def numpy2pixmap(self):
+        g = self.grid.grid
+        return QtGui.QPixmap.fromImage(QtGui.QImage(
+                g.tostring(),
+                g.shape[1],
+                g.shape[0],
+                QtGui.QImage.Format_Indexed8))
 
-    def OnStart(self, event):
+    def start(self):
         if not self.working:
             self.working = True
-            self.parent.SetStatusText("Simulation running!")
-            while 1:
-                wx.Yield()
+            self.parent.ui.statusbar.showMessage("Simulation running!")
+            #while 1:
+            for jj in xrange(100):
                 if not self.working:
                     break
                 for ii in xrange(10):
-                    for oneant in self.ant:
+                    for oneant in self.ants:
                         oneant.run()
-                    self.UpdateDrawing()
+                    self.view.items()[0].setPixmap(self.numpy2pixmap())
+                    #self.scene.update()
+                    #self.view.show()
+                    self.view.repaint()
+                    #self.parent.ui.label.repaint()
+            self.stop()
 
-    def OnStop(self, event):
+    def stop(self):
         if self.working:
             self.working = False
-            self.parent.SetStatusText("Simulation stopped!")
-
-    def Draw(self,dc):
-        #dc.BeginDrawing()
-        dc.Clear()
-        array = self.grid.cgrid
-        image = wx.EmptyImage(self.config["gridSize"],self.config["gridSize"])
-        image.SetData(array.tostring())
-        w, h = self.GetClientSizeTuple()
-        image.Rescale(w,h)
-        bitmap = image.ConvertToBitmap()
-        dc.DrawBitmap(bitmap,0,0,False)
-        #dc.EndDrawing()
+            self.parent.ui.statusbar.showMessage("Simulation stopped!")
 
 
-class SetupDialog(wx.Dialog):
-    """Dialog for the user to configure the simulation"""
-    def __init__(self, parent, config):
-        wx.Dialog.__init__(self, parent, -1, "Setup", wx.DefaultPosition, wx.Size(100,150), wx.DIALOG_MODAL, "LangtonSetupDialog")
-        self.parent = parent
-        self.numColText = wx.StaticText(self, -1, "Number of colors: ", wx.Point(10,10), wx.DefaultSize, wx.ALIGN_LEFT)
-        self.numColControl = wx.TextCtrl(self, -1, str(config["numColors"]), wx.Point(150,10), wx.DefaultSize)
-        self.numAntsText = wx.StaticText(self, -1, "Number of ants: ", wx.Point(10,50), wx.DefaultSize, wx.ALIGN_LEFT)
-        self.numAntsControl = wx.TextCtrl(self, -1, str(config["numAnts"]), wx.Point(150,50), wx.DefaultSize)
-        self.gridSizeText = wx.StaticText(self, -1, "Gridsize: ", wx.Point(10,90), wx.DefaultSize, wx.ALIGN_LEFT)
-        self.gridSizeControl = wx.TextCtrl(self, -1, str(config["gridSize"]), wx.Point(150,90), wx.DefaultSize)
-        okButton = wx.Button(self, wx.ID_OK, "Ok", wx.Point(50,130), wx.DefaultSize)
-        self.Bind(wx.EVT_BUTTON, self.OnOk, okButton)
-        cancelButton = wx.Button(self, wx.ID_CANCEL, "Cancel", wx.Point(140, 130), wx.DefaultSize)
-        self.SetAutoLayout(True)
-        self.Centre(wx.BOTH)
-        self.Layout()
-        self.Fit()
-        #sz = self.GetClientSize()
-        #self.SetClientSize(wx.Size(100, 150))
-        self.Show(True)
+class Langton(QtGui.QMainWindow):
+    def __init__(self, parent=None):
+        QtGui.QWidget.__init__(self, parent)
+        self.ui = Ui_Langton()
+        self.ui.setupUi(self)
+        self.canvas = LangtonCanvas(self)
+        self.resize(self.ui.canvas.size().width(), self.ui.canvas.size().height())
+        self.connect(self.ui.actionQuit, QtCore.SIGNAL("triggered()"), 
+                               QtCore.SLOT("close()"))
+        self.connect(self.ui.actionSave, QtCore.SIGNAL("triggered()"),
+                     self.show_save_dialog)
+        self.connect(self.ui.actionAbout, QtCore.SIGNAL("triggered()"),
+                     self.show_about_dialog)
+        self.connect(self.ui.actionStart, QtCore.SIGNAL("triggered()"),
+                     self.canvas.start)
+        self.connect(self.ui.actionStop, QtCore.SIGNAL("triggered()"),
+                     self.canvas.stop)
 
-    def OnOk(self, event):
-        """User pressed ok button, destroy the dialog and reset simulation"""
-        # read values from the text controls and set config dict
-        config = {}
-        config["numColors"] = int(self.numColControl.GetValue())
-        config["numAnts"] = int(self.numAntsControl.GetValue())
-        config["gridSize"] = int(self.gridSizeControl.GetValue())
-        # Cannot simply create new canvas, because events are bound to the old one!
-        # So instead of creating a new canvas, call the constructor again!
-        #self.parent.canvas.__init__(self.parent, -1, config = self.config)
-        self.parent.canvas.set_config(config)
-        self.EndModal(wx.ID_OK)
+    def show_save_dialog(self):
+        filename = QtGui.QFileDialog.getSaveFileName(self, 'Save file')
+        #file=open(filename)
+        #data = file.read()
+
+    def show_about_dialog(self):
+        dlg = QtGui.QMessageBox(self)
+        dlg.setText("PyQt Langton's ant %s" % __version__)
+        dlg.addButton('Ok', QtGui.QMessageBox.AcceptRole)
+        dlg.exec_()
+        response = dlg.clickedButton()
 
 
-class Frame(wx.Frame):
-    def __init__(self, parent,ID, title):
-        wx.Frame.__init__(self,parent,ID,title,wx.DefaultPosition,size = (300,350))
-        self.CreateStatusBar()
-        self.SetStatusText("Langtons ant")
-
-        # Set some default values for the configuration
-        config = {"numColors": 2, "numAnts": 10, "gridSize": 100}
-        self.canvas = LangtonCanvas(self, -1, config=config)
-
-        filemenu = wx.Menu()
-        item = filemenu.Append(wx.ID_SAVE, "&Save", "Save to file")
-        self.Bind(wx.EVT_MENU, self.saveToFile, item)
-        item = filemenu.Append(wx.ID_EXIT, "E&xit", "Terminate program")
-        self.Bind(wx.EVT_MENU, self.OnExit, item)
-
-        editmenu = wx.Menu()
-        item = editmenu.Append(wx.ID_SETUP, "&Setup", "Configure the simulation") 
-        self.Bind(wx.EVT_MENU, self.OnSetup, item)
-
-        simumenu = wx.Menu()
-        item = simumenu.Append(-1, "S&tart", "Start the simulation")
-        self.Bind(wx.EVT_MENU, self.canvas.OnStart, item)
-        item = simumenu.Append(wx.ID_STOP, "Sto&p", "Stop the simulation")
-        self.Bind(wx.EVT_MENU, self.canvas.OnStop, item)
-        item = simumenu.Append(-1, "&Debug", "Print debug information")
-        self.Bind(wx.EVT_MENU, self.printConfig, item)
-
-        helpmenu = wx.Menu()
-        item = helpmenu.Append(wx.ID_ABOUT, "&About",
-                    "More info about program")
-        self.Bind(wx.EVT_MENU, self.OnAbout, item)
-
-        #menu.AppendSeparator()
-
-        menuBar = wx.MenuBar()
-        menuBar.Append(filemenu, "&File")
-        menuBar.Append(editmenu, "&Edit")
-        menuBar.Append(simumenu, "&Simulation")
-        menuBar.Append(helpmenu, "&Help")
-        self.SetMenuBar(menuBar)
-
-        self.Centre(wx.BOTH)
-
-
-    def printConfig(self, event):
-        """Print config information"""
-        print self.canvas.config
-
-    def saveToFile(self, event):
-        """ Save the generated picture to a file. """
-        dlg = wx.FileDialog(self, "Choose a file name to save the image as a PNG to",
-                           defaultDir = "", defaultFile = "", wildcard = "*.png", style=wx.SAVE)
-        if dlg.ShowModal() == wx.ID_OK:
-            self.canvas.SaveToFile(dlg.GetPath(), wx.BITMAP_TYPE_PNG)
-        dlg.Destroy()
-        
-    def OnSetup(self, event):
-        """Launch the setup dialog"""
-        dlg = SetupDialog(self, self.canvas.config)
-        dlg.ShowModal()
-        dlg.Destroy()
-        
-
-    def OnAbout(self, event):
-        message = "This is Langtons ant.\nVersion: " + __version__[10:-1]
-        dlg = wx.MessageDialog(self, message , "About Me", wx.OK | wx.ICON_INFORMATION)
-        dlg.ShowModal()
-        dlg.Destroy()
-
-    def OnExit(self, event):
-        self.canvas.working = False
-        self.Close(True)
-
-class Langton(wx.App):
-    def OnInit(self):
-        wx.InitAllImageHandlers() # So we can save PNG image
-        frame = Frame(None, -1, "Langtons ant")
-        frame.Show(True)
-        self.SetTopWindow(frame)
-        return True
-
-app = Langton(0)
-app.MainLoop()
+if __name__ == '__main__':
+    app = QtGui.QApplication(sys.argv)
+    my_app = Langton()
+    my_app.show()
+    sys.exit(app.exec_())
