@@ -166,11 +166,10 @@ class LangtonCanvas(object):
                 QtGui.QApplication.processEvents()
                 if not self.working:
                     break
-                for ii in xrange(10):
-                    for oneant in self.ants:
-                        oneant.run()
-                    self.view.items()[0].setPixmap(self.numpy2pixmap())
-                    self.view.items()[0].update()
+                for oneant in self.ants:
+                    oneant.run()
+                self.view.items()[0].setPixmap(self.numpy2pixmap())
+                self.view.items()[0].update()
 
     def stop(self):
         if self.working:
@@ -212,16 +211,20 @@ class Langton(QtGui.QMainWindow):
         response = dlg.clickedButton()
 
     def quit_app(self):
-        self.canvas.working = False
-        sys.exit()
+        if self.canvas.working:
+            self.canvas.stop()
+        self.close()
+
+def main(argv, gl):
+    app = QtGui.QApplication(argv)
+    my_app = Langton(gl=gl)
+    my_app.show()
+    sys.exit(app.exec_())
 
 if __name__ == '__main__':
     from optparse import OptionParser
-    app = QtGui.QApplication(sys.argv)
     parser = OptionParser()
     parser.add_option('-g', '--gl', dest='gl', action='store_true', 
                       help='Use OpenGL')
     (options, args) = parser.parse_args()
-    my_app = Langton(gl=options.gl)
-    my_app.show()
-    sys.exit(app.exec_())
+    main(sys.argv, options.gl)
