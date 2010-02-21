@@ -27,8 +27,10 @@ You can run the program from the directory where you unpacked it, or you can
 run the python distutils installer via ``python setup.py install
 --prefix=$HOME`` to install it to your home directory.
 
-The program depends on `NumPy <http://numpy.scipy.org>`_ and `wxPython
-<http://wxpython.org>`_ .
+The program depends on the `NumPy <http://numpy.scipy.org>`_ and
+`PyQt4
+<http://http://www.riverbankcomputing.co.uk/software/pyqt/download>`_
+libraries.
 
 Running the program
 -------------------

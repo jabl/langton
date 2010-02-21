@@ -3,12 +3,12 @@
 from distutils.core import setup
 
 setup(name='langton',
-      version='2.0',
+      version='3.0',
       description="Enhanced Langton's ant cellular automata",
       author='Janne Blomqvist',
-      author_email='Janne.Blomqvist@tkk.fi',
-      url='http://users.tkk.fi/~jblomqvi/',
+      author_email='blomqvist.janne@gmail.com',
+      url='',
       scripts = ['langton.py', \
-              'bufferedwindow.py']
+              'qtlangton.py']
      )
 

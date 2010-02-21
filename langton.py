@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-#  Copyright (c) 2003-2004, 2008 Janne Blomqvist
+#  Copyright (c) 2003-2004, 2008, 2009, 2010 Janne Blomqvist
 
 #  Langton is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -38,12 +38,6 @@ class Grid(object):
         self.grid = np.empty((n,n), dtype=np.uint32)
         self.grid.fill(inicolor)
 
-        # Index vector for periodic boundary conditions
-        #__foo = list(range(n))
-        #__foo.append(n-1)
-        #__foo.insert(0,0)
-        #self.index = np.array(__foo)
-
     def _get_n(self):
         return self.grid.shape[0]
 
@@ -58,9 +52,6 @@ class Grid(object):
     def printGrid(self, event=None):
         "print the grid"
         print self.grid
-        #print "Now comes the color values:\n"
-        #print self.cgrid
-    
 
 class Ant(object):
     "Represents an ant that moves around on the grid"
@@ -102,7 +93,6 @@ class Ant(object):
         else:
             raise Exception("Invalid heading for ant: " + str(self.heading))
 
-            
         # Finally, correct coordinates if they are over bounds
         self.pos_x = self.pos_x % self.grid.n
         self.pos_y = self.pos_y % self.grid.n
@@ -206,8 +196,6 @@ class Langton(QtGui.QMainWindow):
     def show_save_dialog(self):
         filename = QtGui.QFileDialog.getSaveFileName(self, 'Save file')
         self.canvas.numpy2pixmap().save(filename)
-        #file=open(filename)
-        #data = file.read()
 
     def show_about_dialog(self):
         dlg = QtGui.QMessageBox(self)
