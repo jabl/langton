@@ -33,9 +33,10 @@ WEST=3
 class Grid(object):
     "Grid for the ants to move on"
     
-    def __init__(self, n):
+    def __init__(self, n, inicolor):
         "Init the nxn index grid "
-        self.grid = np.zeros((n,n), dtype=np.uint8)
+        self.grid = np.empty((n,n), dtype=np.uint32)
+        self.grid.fill(inicolor)
 
         # Index vector for periodic boundary conditions
         #__foo = list(range(n))
@@ -64,28 +65,31 @@ class Grid(object):
 class Ant(object):
     "Represents an ant that moves around on the grid"
 
-    def __init__(self, grid, config):
+    def __init__(self, grid, colors):
         "Init the ant"
         self.grid = grid
-        self.config = config
+        # Initial position and heading
         self.pos_x = random.randrange(0,self.grid.n)
         self.pos_y = random.randrange(0,self.grid.n)
         self.heading = random.randrange(0,4) # north, east etc.
-        self.color = nrand.permutation(config["numColors"])
-        self.dir = nrand.randint(0,4,config["numColors"])
-
+        # Generate the ant program. The describes for every color X,
+        # switch the cell to color Y and switch direction. The program is
+        # stored in a dictionary indexed by color
+        newcolors = nrand.permutation(colors)
+        newdir = nrand.randint(0, 4, colors.size)
+        self.program = dict(zip(colors, zip(newcolors, newdir)))
 
     def run(self):
         "Run the ant for one timestep"
         # Which color is the current grid cell?
         currentcolor = self.grid.grid[self.pos_x, self.pos_y]
+        # The program instruction for the current color
+        instr = self.program[currentcolor]
         # Now, change the color of the grid cell according to program
-        self.grid.grid[self.pos_x, self.pos_y] = self.color[currentcolor]
+        self.grid.grid[self.pos_x, self.pos_y] = instr[0]
         # And move ant in the direction specified in its program
         # First decide which direction to turn to
-        
-        self.heading = (self.heading + self.dir[currentcolor]) % 3
-        #self.heading = self.heading % 3
+        self.heading = (self.heading + instr[1]) % 3
         
         if (self.heading == NORTH):
             self.pos_y += 1
@@ -96,13 +100,12 @@ class Ant(object):
         elif (self.heading == WEST):
             self.pos_x -= 1
         else:
-            print "BIIG error\n"
-            print self.heading
-            sys.exit(0)
+            raise Exception("Invalid heading for ant: " + str(self.heading))
+
             
         # Finally, correct coordinates if they are over bounds
-        self.pos_x = self.pos_x % self.config["gridSize"]
-        self.pos_y = self.pos_y % self.config["gridSize"]
+        self.pos_x = self.pos_x % self.grid.n
+        self.pos_y = self.pos_y % self.grid.n
 
 
 # Now the gui stuff
@@ -115,7 +118,7 @@ class LangtonCanvas(object):
 
         self.working = False
         if not config:
-            config = {"numColors": 2, "numAnts": 10, "gridSize": 300, 
+            config = {"numColors": 10, "numAnts": 10, "gridSize": 300, 
                       "gl": gl}
         self.set_config(config)
 
@@ -127,16 +130,18 @@ class LangtonCanvas(object):
             restartwork = True
         self.config = config
         # Set up colors (random)
-        self.colors = nrand.randint(0, 256, config["numColors"] * 3) \
-                .astype(np.uint8).reshape(config["numColors"], 3)
+        # Color format is 32-bit RGB 0xffRRGGBB
+        # So use an unsigned 32-bit integer
+        self.colors = nrand.randint(2**32-2**24, 2**32, config["numColors"]) \
+            .astype(np.uint32)
 
         # Init the Grid
-        self.grid = Grid(config["gridSize"])
+        self.grid = Grid(config["gridSize"], self.colors[0])
 
         # Init ants
         self.ants = []
         for nant in xrange(config["numAnts"]):
-            self.ants.append(Ant(self.grid, config))
+            self.ants.append(Ant(self.grid, self.colors))
 
         # Init display
         if self.config['gl']:
@@ -153,10 +158,10 @@ class LangtonCanvas(object):
     def numpy2pixmap(self):
         g = self.grid.grid
         return QtGui.QPixmap.fromImage(QtGui.QImage(
-                g.tostring(),
+                g.data,
                 g.shape[1],
                 g.shape[0],
-                QtGui.QImage.Format_Indexed8))
+                QtGui.QImage.Format_RGB32))
 
     def start(self):
         if not self.working:
@@ -166,10 +171,11 @@ class LangtonCanvas(object):
                 QtGui.QApplication.processEvents()
                 if not self.working:
                     break
-                for oneant in self.ants:
-                    oneant.run()
-                self.view.items()[0].setPixmap(self.numpy2pixmap())
-                self.view.items()[0].update()
+                for x in range(10):
+                    for oneant in self.ants:
+                        oneant.run()
+                    self.view.items()[0].setPixmap(self.numpy2pixmap())
+                    self.view.items()[0].update()
 
     def stop(self):
         if self.working:
