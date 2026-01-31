@@ -1,6 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 
-#  Copyright (c) 2003-2004, 2008, 2009, 2010 Janne Blomqvist
+#  Copyright (c) 2003-2004, 2008, 2009, 2010, 2026 Janne Blomqvist
 
 #  Langton is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -15,14 +15,16 @@
 #  You should have received a copy of the GNU General Public License
 #  along with Langton.  If not, see <http://www.gnu.org/licenses/>.
 
-__version__ = "Revision: 3.0 "
+__version__ = "Revision: 3.99 "
 
 
 import random
 import numpy as np 
 import numpy.random as nrand
 import sys
-from PyQt4 import QtGui, QtCore, QtOpenGL
+from PyQt6 import QtGui, QtCore, QtOpenGL
+from PyQt6.QtWidgets import QApplication, QMainWindow, QGraphicsScene, \
+    QMessageBox, QFileDialog
 from qtlangton import Ui_Langton
 
 NORTH=0
@@ -42,16 +44,16 @@ class Grid(object):
         return self.grid.shape[0]
 
     def _set_n(self, val):
-        raise AttributeError, "Can't set attribute n."
+        raise AttributeError("Can't set attribute n.")
 
     def _del_n(self):
-        raise AttributeError, "Can't delete attribute n."
+        raise AttributeError("Can't delete attribute n.")
 
     n = property(_get_n, _set_n, _del_n, "Grid size.")
 
     def printGrid(self, event=None):
         "print the grid"
-        print self.grid
+        print(self.grid)
 
 class Ant(object):
     "Represents an ant that moves around on the grid"
@@ -68,7 +70,7 @@ class Ant(object):
         # stored in a dictionary indexed by color
         newcolors = nrand.permutation(colors)
         newdir = nrand.randint(0, 4, colors.size)
-        self.program = dict(zip(colors, zip(newcolors, newdir)))
+        self.program = dict(list(zip(colors, list(zip(newcolors, newdir)))))
 
     def run(self):
         "Run the ant for one timestep"
@@ -130,13 +132,13 @@ class LangtonCanvas(object):
 
         # Init ants
         self.ants = []
-        for nant in xrange(config["numAnts"]):
+        for nant in range(config["numAnts"]):
             self.ants.append(Ant(self.grid, self.colors))
 
         # Init display
         if self.config['gl']:
             self.view.setViewport(QtOpenGL.QGLWidget())
-        self.scene = QtGui.QGraphicsScene()
+        self.scene = QGraphicsScene()
         self.scene.addPixmap(self.numpy2pixmap())
         self.view.setScene(self.scene)
         self.view.adjustSize()
@@ -151,21 +153,21 @@ class LangtonCanvas(object):
                 g.data,
                 g.shape[1],
                 g.shape[0],
-                QtGui.QImage.Format_RGB32))
+                QtGui.QImage.Format.Format_RGB32))
 
     def start(self):
         if not self.working:
             self.working = True
             self.parent.ui.statusbar.showMessage("Simulation running!")
             while 1:
-                QtGui.QApplication.processEvents()
+                QApplication.processEvents()
                 if not self.working:
                     break
                 for x in range(10):
                     for oneant in self.ants:
                         oneant.run()
-                    self.view.items()[0].setPixmap(self.numpy2pixmap())
-                    self.view.items()[0].update()
+                    list(self.view.items())[0].setPixmap(self.numpy2pixmap())
+                    list(self.view.items())[0].update()
 
     def stop(self):
         if self.working:
@@ -173,35 +175,28 @@ class LangtonCanvas(object):
             self.parent.ui.statusbar.showMessage("Simulation stopped!")
 
 
-class Langton(QtGui.QMainWindow):
-    def __init__(self, parent=None, gl=False):
-        QtGui.QWidget.__init__(self, parent)
+class Langton(QMainWindow):
+    def __init__(self, gl, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.ui = Ui_Langton()
         self.ui.setupUi(self)
         self.canvas = LangtonCanvas(self, gl=gl)
         self.resize(self.ui.canvas.size().width(), self.ui.canvas.size().height())
-        self.connect(self.ui.actionQuit, QtCore.SIGNAL("triggered()"), 
-                               self.quit_app)
-        self.connect(self.ui.actionSave, QtCore.SIGNAL("triggered()"),
-                     self.show_save_dialog)
-        self.connect(self.ui.actionAbout, QtCore.SIGNAL("triggered()"),
-                     self.show_about_dialog)
-        self.connect(self.ui.actionAbout_Qt, QtCore.SIGNAL("triggered()"),
-                     QtGui.QApplication.aboutQt)
-        self.connect(self.ui.actionStart, QtCore.SIGNAL("triggered()"),
-                     self.canvas.start)
-        self.connect(self.ui.actionStop, QtCore.SIGNAL("triggered()"),
-                     self.canvas.stop)
+        self.ui.actionQuit.triggered.connect(self.quit_app)
+        self.ui.actionSave.triggered.connect(self.show_save_dialog)
+        self.ui.actionAbout.triggered.connect(self.show_about_dialog)
+        self.ui.actionAbout_Qt.triggered.connect(QApplication.aboutQt)
+        self.ui.actionStart.triggered.connect(self.canvas.start)
+        self.ui.actionStop.triggered.connect(self.canvas.stop)
 
     def show_save_dialog(self):
-        filename = QtGui.QFileDialog.getSaveFileName(self, 'Save file')
-        self.canvas.numpy2pixmap().save(filename)
+        filename = QFileDialog.getSaveFileName(self, 'Save file')
+        self.canvas.numpy2pixmap().save(filename[0])
 
     def show_about_dialog(self):
-        dlg = QtGui.QMessageBox(self)
+        dlg = QMessageBox(self)
         dlg.setText("PyQt Langton's ant %s" % __version__)
-        dlg.addButton('Ok', QtGui.QMessageBox.AcceptRole)
-        dlg.exec_()
+        dlg.exec()
         response = dlg.clickedButton()
 
     def quit_app(self):
@@ -210,10 +205,10 @@ class Langton(QtGui.QMainWindow):
         self.close()
 
 def main(argv, gl):
-    app = QtGui.QApplication(argv)
+    app = QApplication(argv)
     my_app = Langton(gl=gl)
     my_app.show()
-    sys.exit(app.exec_())
+    sys.exit(app.exec())
 
 if __name__ == '__main__':
     from optparse import OptionParser
