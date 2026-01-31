@@ -28,8 +28,8 @@ run the python distutils installer via ``python setup.py install
 --prefix=$HOME`` to install it to your home directory.
 
 The program depends on the `NumPy <http://numpy.scipy.org>`_ and
-`PyQt4
-<http://http://www.riverbankcomputing.co.uk/software/pyqt/download>`_
+`PyQt6
+<https://riverbankcomputing.com/software/pyqt/>`_
 libraries.
 
 Running the program
